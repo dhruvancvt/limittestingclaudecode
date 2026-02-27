@@ -1,2 +1,3 @@
 brainfuck/__pycache__/
-frontend/dist/\nfrontend/node_modules/
+frontend/dist/
+frontend/node_modules/
