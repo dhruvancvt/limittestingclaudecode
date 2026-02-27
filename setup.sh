@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Claude Code Remote – one-shot setup script
+# Claude Code Mobile – one-shot setup script
 # ============================================================
 set -euo pipefail
 
@@ -77,7 +77,7 @@ cd ..
 # ------------------------------------------------------------
 echo ""
 echo -e "\033[1;35m====================================================\033[0m"
-echo -e "\033[1;35m  Claude Code Remote – Setup complete!\033[0m"
+echo -e "\033[1;35m  Claude Code Mobile – Setup complete!\033[0m"
 echo -e "\033[1;35m====================================================\033[0m"
 echo ""
 

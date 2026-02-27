@@ -30,7 +30,7 @@ export default function LoginPage() {
             <path d="M12 24 L24 12 L36 24 L24 36 Z" fill="#7c3aed" opacity="0.8" />
             <circle cx="24" cy="24" r="6" fill="#a78bfa" />
           </svg>
-          <h1>Claude Code Remote</h1>
+          <h1>Claude Code Mobile</h1>
           <p>Control Claude Code from your phone</p>
         </div>
 

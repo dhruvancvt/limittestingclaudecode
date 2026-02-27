@@ -1,5 +1,5 @@
 """
-Claude Code Remote – FastAPI backend
+Claude Code Mobile – FastAPI backend
 =====================================
 Endpoints
 ---------
@@ -44,7 +44,7 @@ from .config import config
 from .session_manager import SessionManager
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("claude-remote")
+log = logging.getLogger("claude-mobile")
 
 session_manager = SessionManager()
 
@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="Claude Code Remote", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Claude Code Mobile", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
