@@ -1,11 +1,11 @@
 """
-Claude-powered reasoning engine.
+Claude Opus 4.6 reasoning engine with adaptive thinking.
 
-Takes a market question + validated evidence and returns:
-  - An estimated true probability
-  - A recommended bet direction
-  - A confidence level
-  - A structured reasoning chain
+Uses claude-opus-4-6 with thinking: {type: "adaptive"} so the model
+decides how deeply to reason. The full reasoning chain is included in
+the context so that any thinking done is exposed for debugging.
+
+Cost per call is tracked against the $50 lifetime budget.
 """
 
 import json
@@ -18,7 +18,8 @@ from ..config import cfg
 from ..markets.base import Market
 from ..research.validator import ValidationReport
 
-MODEL = "claude-sonnet-4-6"
+# Use the most capable model — the $50 budget accounts for this cost.
+MODEL = "claude-opus-4-6"
 
 SYSTEM_PROMPT = """You are an expert prediction market analyst and probabilistic reasoner.
 
@@ -59,6 +60,7 @@ class AnalysisResult:
     reasoning: str
     key_uncertainties: list[str]
     evidence_quality: str       # "high", "medium", "low"
+    thinking_summary: str = ""  # Opus 4.6 adaptive thinking excerpt
 
     @property
     def has_edge(self) -> bool:
@@ -89,26 +91,56 @@ class MarketAnalyzer:
         market: Market,
         validation_report: ValidationReport,
     ) -> Optional[AnalysisResult]:
-        """Run Claude reasoning over the market and its validated evidence."""
+        """
+        Run Claude Opus 4.6 reasoning (with adaptive thinking) over the market.
+
+        Adaptive thinking lets Opus 4.6 decide how deeply to reason about
+        each market. High-stakes / ambiguous markets get more thinking tokens;
+        clear-cut markets are answered quickly, saving budget.
+        """
         market_prob = market.yes_price or 0.5
         user_message = self._build_prompt(market, market_prob, validation_report)
 
         try:
-            response = self._client.messages.create(
+            # Streaming with get_final_message() prevents HTTP timeouts on
+            # long adaptive-thinking responses (Opus 4.6 can use many tokens).
+            with self._client.messages.stream(
                 model=MODEL,
-                max_tokens=1024,
+                max_tokens=4096,
+                thinking={"type": "adaptive"},
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
-            )
-            raw_json = response.content[0].text.strip()
-            # Strip markdown code fences if present
-            if raw_json.startswith("```"):
-                raw_json = raw_json.split("```")[1]
-                if raw_json.startswith("json"):
-                    raw_json = raw_json[4:]
+            ) as stream:
+                response = stream.get_final_message()
+
+        except anthropic.APIError as exc:
+            print(f"[analyzer] Claude API error: {exc}")
+            return None
+
+        # Extract thinking summary (first 300 chars) and JSON answer
+        thinking_summary = ""
+        raw_json = ""
+        for block in response.content:
+            if block.type == "thinking":
+                thinking_summary = block.thinking[:300]
+            elif block.type == "text":
+                raw_json = block.text.strip()
+
+        if not raw_json:
+            print("[analyzer] No text block in response")
+            return None
+
+        # Strip markdown code fences if present
+        if raw_json.startswith("```"):
+            parts = raw_json.split("```")
+            raw_json = parts[1] if len(parts) > 1 else raw_json
+            if raw_json.startswith("json"):
+                raw_json = raw_json[4:]
+
+        try:
             data = json.loads(raw_json)
-        except (json.JSONDecodeError, IndexError, anthropic.APIError) as exc:
-            print(f"[analyzer] error parsing Claude response: {exc}")
+        except json.JSONDecodeError as exc:
+            print(f"[analyzer] JSON parse error: {exc}\nRaw: {raw_json[:200]}")
             return None
 
         return AnalysisResult(
@@ -121,6 +153,7 @@ class MarketAnalyzer:
             reasoning=data.get("reasoning", ""),
             key_uncertainties=data.get("key_uncertainties", []),
             evidence_quality=data.get("evidence_quality", "low"),
+            thinking_summary=thinking_summary,
         )
 
     # ── Private ───────────────────────────────────────────────────────────────

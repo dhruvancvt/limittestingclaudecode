@@ -24,9 +24,15 @@ class Config:
     # Manifold
     MANIFOLD_API_KEY: str = os.getenv("MANIFOLD_API_KEY", "")
 
-    # Bot behaviour
+    # ── Budget ─────────────────────────────────────────────────────────────────
+    # The bot has exactly $50 to survive. This covers API costs AND real bets.
+    # Manifold uses play-money (Mana), so Manifold bets are free.
+    # Kalshi / Polymarket bets come out of the same $50 as API costs.
+    TOTAL_BUDGET_USD: float = float(os.getenv("TOTAL_BUDGET_USD", "50"))
+
+    # ── Bot behaviour ──────────────────────────────────────────────────────────
     DRY_RUN: bool = os.getenv("DRY_RUN", "true").lower() == "true"
-    MAX_BET_USD: float = float(os.getenv("MAX_BET_USD", "10"))
+    MAX_BET_USD: float = float(os.getenv("MAX_BET_USD", "5"))       # Lowered: preserve budget
     MAX_BET_MANA: float = float(os.getenv("MAX_BET_MANA", "100"))
     KELLY_FRACTION: float = float(os.getenv("KELLY_FRACTION", "0.25"))
     MIN_EDGE: float = float(os.getenv("MIN_EDGE", "0.05"))

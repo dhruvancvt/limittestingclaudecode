@@ -1,10 +1,14 @@
 """
 Bet executor — translates AnalysisResult + Kelly size into platform-specific orders.
+
+Real-money bets (Kalshi / Polymarket) are charged against the $50 lifetime budget.
+Manifold bets use play-money (Mana) and don't consume the budget.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 
+from ..budget import budget as budget_mgr
 from ..config import cfg
 from ..markets.base import Market, Platform
 from ..markets.manifold import ManifoldClient
@@ -33,7 +37,7 @@ class BetExecutor:
         manifold: Optional[ManifoldClient] = None,
         kalshi: Optional[KalshiClient] = None,
         polymarket: Optional[PolymarketClient] = None,
-        bankroll_usd: float = 100.0,
+        bankroll_usd: float = 30.0,    # Real-money portion of $50
         bankroll_mana: float = 1000.0,
     ) -> None:
         self._manifold = manifold
@@ -51,7 +55,7 @@ class BetExecutor:
         outcome = analysis.recommended_outcome  # "YES" or "NO"
 
         if outcome == "YES":
-            size_usd = kelly_bet_size(
+            raw_usd = kelly_bet_size(
                 analysis.estimated_probability,
                 analysis.market_probability,
                 self._bankroll_usd,
@@ -63,7 +67,7 @@ class BetExecutor:
                 max_bet=cfg.MAX_BET_MANA,
             )
         else:
-            size_usd = kelly_no_bet_size(
+            raw_usd = kelly_no_bet_size(
                 analysis.estimated_probability,
                 analysis.market_probability,
                 self._bankroll_usd,
@@ -75,7 +79,19 @@ class BetExecutor:
                 max_bet=cfg.MAX_BET_MANA,
             )
 
+        # Cap real-money bets to whatever the budget allows
+        size_usd = budget_mgr.max_bet_usd(raw_usd)
+
+        # Don't bet if the budget-capped amount rounds to nothing
+        if market.platform != Platform.MANIFOLD and size_usd < 0.01:
+            return None
+
         order = self._route_order(market, outcome, size_usd, size_mana, analysis)
+
+        # Deduct real-money bets from the lifetime budget
+        if order and not order.dry_run and market.platform != Platform.MANIFOLD:
+            budget_mgr.charge_bet(order.size)
+
         return order
 
     # ── Routing ───────────────────────────────────────────────────────────────
@@ -114,7 +130,6 @@ class BetExecutor:
     def _bet_kalshi(
         self, market: Market, outcome: str, size_usd: float, analysis: AnalysisResult
     ) -> BetOrder:
-        # Kalshi trades in $0.01 contracts; round to nearest cent
         contracts = max(int(size_usd * 100), 1)
         yes_price_cents = int(analysis.market_probability * 100)
         result = None
@@ -133,7 +148,6 @@ class BetExecutor:
     def _bet_polymarket(
         self, market: Market, outcome: str, size_usdc: float, analysis: AnalysisResult
     ) -> BetOrder:
-        # Find the token ID for this outcome
         token_id = ""
         for o in market.outcomes:
             if o.label.upper() == outcome:
@@ -141,8 +155,7 @@ class BetExecutor:
                 break
         result = None
         if self._polymarket and token_id:
-            side = "BUY"
-            result = self._polymarket.place_order(token_id, side, size_usdc)
+            result = self._polymarket.place_order(token_id, "BUY", size_usdc)
         return BetOrder(
             market=market, outcome=outcome, size=size_usdc, currency="USDC",
             estimated_prob=analysis.estimated_probability,
